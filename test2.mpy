@@ -1,28 +1,20 @@
-import machine, time
-from machine import Pin
+from machine import I2C, Pin
+from bmp180 import BMP180
+from time import sleep
 
-trigger = Pin(5, mode=Pin.OUT)
+i2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=100000)
 
-echo = Pin(15, mode=Pin.IN)
+print("I2C devices:", i2c.scan())
 
-def us_read():
-
-   
-    trigger.value(0) # Stabilize the sensor
-    time.sleep_us(5)
-    trigger.value(1)
-    # Send a 10us pulse.
-    time.sleep_us(10)
-    trigger.value(0)
-    try:
-        pulse_time = machine.time_pulse_us(self.echo, 1, self.echo_timeout_us)
-        cms = (pulse_time / 2) / 29.1
-        return cms
-    except OSError as ex:
-        if ex.args[0] == 110: # 110 = ETIMEDOUT
-            raise OSError('Out of range')
-        raise ex
+print(dir(BMP180))
+bmp180 = BMP180(i2c)
 
 while True:
-    print(us_read())
-    time.sleep(0.2)
+    try:
+        sleep(2)
+        print("Temp:", bmp180.temperature)
+        print("Pressure:", bmp180.pressure)
+        print("Altitude:", bmp180.altitude)
+        print("----------------------")
+    except Exception as e:
+        print("Error:", e)

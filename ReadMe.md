@@ -9,3 +9,4 @@ The fish monitor kit for finding presence of fish with esp32-cam and OpenCV.
 5) Waterproof Ultrasonic Sonic sensor
 6) Water Quality sensor.
 7) Display
+8) esp32 dev-kit
