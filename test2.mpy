@@ -1,0 +1,28 @@
+import machine, time
+from machine import Pin
+
+trigger = Pin(5, mode=Pin.OUT)
+
+echo = Pin(15, mode=Pin.IN)
+
+def us_read():
+
+   
+    trigger.value(0) # Stabilize the sensor
+    time.sleep_us(5)
+    trigger.value(1)
+    # Send a 10us pulse.
+    time.sleep_us(10)
+    trigger.value(0)
+    try:
+        pulse_time = machine.time_pulse_us(self.echo, 1, self.echo_timeout_us)
+        cms = (pulse_time / 2) / 29.1
+        return cms
+    except OSError as ex:
+        if ex.args[0] == 110: # 110 = ETIMEDOUT
+            raise OSError('Out of range')
+        raise ex
+
+while True:
+    print(us_read())
+    time.sleep(0.2)

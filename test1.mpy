@@ -1,0 +1,46 @@
+import machine
+import time
+from machine import Pin
+
+# ────────────────────────────────────────
+# Pin configuration (change pins if needed)
+trigger = Pin(5,  Pin.OUT)   # GPIO5
+echo    = Pin(15, Pin.IN)    # GPIO15
+
+# Optional: timeout prevents hanging forever (in microseconds)
+ECHO_TIMEOUT_US = 30_000     # ≈ 5 meters max range
+
+def us_read():
+    # Prepare
+    trigger.value(0)
+    time.sleep_us(5)           # short low pulse to stabilize
+
+    # Send 10 μs trigger pulse
+    trigger.value(1)
+    time.sleep_us(10)
+    trigger.value(0)
+
+    try:
+        # Measure time the echo pin is HIGH
+        pulse_time = machine.time_pulse_us(echo, 1, ECHO_TIMEOUT_US)
+        
+        # Speed of sound ≈ 343 m/s → 29.1 μs per cm (round trip)
+        distance_cm = pulse_time / 2 / 29.1
+        return round(distance_cm, 1)   # 1 decimal is usually enough
+        
+    except OSError as ex:
+        # ETIMEDOUT = 110 on many MicroPython ports
+        if ex.args[0] == 110:
+            return -1          # or raise OSError("Out of range / timeout")
+        raise                  # re-raise other errors
+
+# ────────────────────────────────────────
+# Main loop
+while True:
+    dist = us_read()
+    if dist < 0:
+        print("Out of range")
+    else:
+        print(f"{dist:5.1f} cm")
+    
+    time.sleep(0.2)   # 5 measurements per second
