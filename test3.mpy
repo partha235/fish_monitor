@@ -1,0 +1,64 @@
+# this program get pic from esp32-cam and stream in web. 
+
+import network
+import socket
+import time
+
+# ========= WIFI CONFIG =========
+SSID = "bps_wifi"
+PASSWORD = "sagabps@235"
+
+ESP32CAM_IP = "192.168.1.7"   # change to your ESP32-CAM IP
+
+# ========= CONNECT WIFI =========
+wlan = network.WLAN(network.STA_IF)
+wlan.active(True)
+wlan.connect(SSID, PASSWORD)
+
+print("Connecting...")
+while not wlan.isconnected():
+    time.sleep(1)
+
+print("Connected!")
+print("IP:", wlan.ifconfig()[0])
+
+# http://192.168.1.7/stream
+# ========= WEB PAGE =========
+def web_page():
+    html = """<!DOCTYPE html>
+<html>
+<head>
+<title>Aquarium Camera</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body style="text-align:center; font-family:Arial;">
+<h2>Live Aquarium Camera</h2>
+
+<iframe src="http://192.168.1.7/capture" 
+        style="border:2px solid black;">
+</iframe>
+
+</body>
+</html>
+"""
+    return html
+
+
+
+# ========= WEB SERVER =========
+addr = socket.getaddrinfo('0.0.0.0', 80)[0][-1]
+server = socket.socket()
+server.bind(addr)
+server.listen(5)
+
+print("Web server running...")
+
+while True:
+    cl, addr = server.accept()
+    request = cl.recv(1024)
+
+    response = web_page()
+
+    cl.send("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n")
+    cl.sendall(response)
+    cl.close()

@@ -1,63 +1,36 @@
 import cv2
 import numpy as np
-import serial
+import requests
 import time
 
-# -------- SERIAL SETUP --------
-ser = serial.Serial('/dev/ttyUSB0', 9600)
-time.sleep(2)
-
-# -------- CAMERA --------
-cap = cv2.VideoCapture(1)
+url = "http://192.168.1.7/capture"
 
 while True:
-    ret, frame = cap.read()
-    if not ret:
+    try:
+        response = requests.get(url, timeout=5)
+
+        if response.status_code != 200:
+            print("Failed to get image")
+            continue
+
+        img_array = np.frombuffer(response.content, dtype=np.uint8)
+        img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+
+        if img is None:
+            print("Image decode failed")
+            continue
+
+        cv2.imshow("ESP32-CAM", img)
+
+        cv2.imwrite("insect.jpg", img)
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+        time.sleep(20)  # match your ESP refresh (20 sec)
+
+    except Exception as e:
+        print("Error:", e)
         break
 
-    frame = cv2.resize(frame, (640, 480))
-
-    # Convert to HSV
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-
-    # 🔥 Fire color range
-    lower1 = np.array([0, 150, 150])
-    upper1 = np.array([15, 255, 255])
-
-    lower2 = np.array([18, 150, 150])
-    upper2 = np.array([35, 255, 255])
-
-    mask1 = cv2.inRange(hsv, lower1, upper1)
-    mask2 = cv2.inRange(hsv, lower2, upper2)
-
-    fire_mask = mask1 + mask2
-    fire_pixels = cv2.countNonZero(fire_mask)
-    print("value = ",fire_pixels)
-
-    # -------- FIRE LOGIC --------
-    if fire_pixels > 1500:
-        # 🔥 FIRE irukkura ella frame-layum
-        print("🔥 FIRE DETECTED")
-        ser.write(b'FIRE\n')
-
-        cv2.putText(frame, "🔥 FIRE DETECTED", (20, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1,
-                    (0, 0, 255), 2)
-        # time.sleep(0.5)
-    else:
-        print("SAFE")
-        ser.write(b'SAFE\n')
-
-        cv2.putText(frame, "SAFE", (20, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1,
-                    (0, 255, 0), 2)
-        # time.sleep(0.5)
-
-    cv2.imshow("Fire Detection", frame)
-
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
-
-cap.release()
 cv2.destroyAllWindows()
-ser.close() 

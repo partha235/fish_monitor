@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ESP32-CAM Insect Monitor</title>
+  <style>
+    body { font-family: Arial; text-align: center; margin-top: 20px; }
+    img { width: 320px; height: auto; }
+    button { font-size: 16px; padding: 10px 20px; margin: 10px; }
+  </style>
+</head>
+<body>
+  <h1>ESP32-CAM Monitor</h1>
+  <img src="/stream" alt="Live Stream"><br>
+  <button onclick="fetch('/control?state=on').then(() => console.log('LED On'));">LED ON</button>
+  <button onclick="fetch('/control?state=off').then(() => console.log('LED Off'));">LED OFF</button>
+  <br><a href="/capture">Capture Single Image</a>
+</body>
+</html>
