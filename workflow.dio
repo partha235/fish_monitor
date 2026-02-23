@@ -1,0 +1,67 @@
+<mxfile host="65bd71144e">
+    <diagram id="LiUMuetRssImuKWh4wRR" name="Page-1">
+        <mxGraphModel dx="710" dy="574" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="20" style="edgeStyle=none;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;strokeWidth=6;fontSize=19;fillColor=#f5f5f5;strokeColor=#666666;" edge="1" parent="1" source="2" target="11">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="22" style="edgeStyle=none;html=1;exitX=1;exitY=0;exitDx=0;exitDy=30;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=6;fontSize=19;fillColor=#f5f5f5;strokeColor=#666666;" edge="1" parent="1" source="2" target="19">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="2" value="&lt;font style=&quot;font-size: 19px;&quot;&gt;ESP32S3&lt;/font&gt;" style="shadow=0;dashed=0;align=center;html=1;strokeWidth=1;shape=mxgraph.electrical.logic_gates.qfp_ic;labelNames=a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z,a1,b1,c1,d1,e1,f1,g1,h1,i1,j1,k1,l1,m1,n1;fillColor=#647687;fontColor=#ffffff;strokeColor=#314354;" vertex="1" parent="1">
+                    <mxGeometry x="300" y="430" width="250" height="240" as="geometry"/>
+                </mxCell>
+                <mxCell id="12" style="edgeStyle=none;html=1;fontSize=19;strokeWidth=6;fillColor=#f5f5f5;strokeColor=#666666;" edge="1" parent="1" source="3" target="2">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="3" value="&lt;font color=&quot;#ffffff&quot;&gt;Camera&lt;/font&gt;" style="outlineConnect=0;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;shape=mxgraph.aws3.camera;fillColor=#f0a30a;fontSize=19;fontColor=#000000;strokeColor=#BD7000;" vertex="1" parent="1">
+                    <mxGeometry x="160" y="220" width="79.5" height="79.5" as="geometry"/>
+                </mxCell>
+                <mxCell id="13" style="edgeStyle=none;html=1;entryX=0;entryY=0;entryDx=0;entryDy=50;entryPerimeter=0;strokeWidth=6;fontSize=19;fillColor=#f5f5f5;strokeColor=#666666;" edge="1" parent="1" source="4" target="2">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="4" value="&lt;font style=&quot;font-size: 15px;&quot;&gt;Location&lt;/font&gt;" style="aspect=fixed;html=1;points=[];align=center;image;fontSize=12;image=img/lib/azure2/general/Location.svg;" vertex="1" parent="1">
+                    <mxGeometry x="171.3" y="390" width="56.9" height="101" as="geometry"/>
+                </mxCell>
+                <mxCell id="14" style="edgeStyle=none;html=1;entryX=0;entryY=0;entryDx=0;entryDy=150;entryPerimeter=0;strokeWidth=6;fontSize=19;fillColor=#f5f5f5;strokeColor=#666666;" edge="1" parent="1" source="5" target="2">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="5" value="&lt;font style=&quot;font-size: 14px;&quot; color=&quot;#ffffff&quot;&gt;Temperature&amp;nbsp;&lt;br&gt;Humidity&amp;nbsp;&lt;/font&gt;" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#3F8624;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.iot_thing_temperature_humidity_sensor;" vertex="1" parent="1">
+                    <mxGeometry x="160" y="592" width="78" height="78" as="geometry"/>
+                </mxCell>
+                <mxCell id="8" value="" style="group" vertex="1" connectable="0" parent="1">
+                    <mxGeometry x="450" y="748" width="130" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="6" value="Ultrasonic&lt;br&gt;distance" style="pointerEvents=1;verticalLabelPosition=bottom;shadow=0;dashed=0;align=center;html=1;verticalAlign=top;shape=mxgraph.electrical.electro-mechanical.buzzer;fontSize=19;" vertex="1" parent="8">
+                    <mxGeometry width="130" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="7" value="" style="pointerEvents=1;verticalLabelPosition=bottom;shadow=0;dashed=0;align=center;html=1;verticalAlign=top;shape=mxgraph.electrical.waveforms.square_wave;fontSize=19;" vertex="1" parent="8">
+                    <mxGeometry x="20" y="40" width="50" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="15" style="edgeStyle=none;html=1;entryX=0;entryY=1;entryDx=50;entryDy=0;entryPerimeter=0;strokeWidth=6;fontSize=19;fillColor=#f5f5f5;strokeColor=#666666;" edge="1" parent="1" source="9" target="2">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="9" value="Water &lt;br&gt;Quality" style="shape=mxgraph.signs.food.drinking_water_1;html=1;pointerEvents=1;fillColor=#1ba1e2;strokeColor=#006EAF;verticalLabelPosition=bottom;verticalAlign=top;align=center;fontSize=19;fontColor=#ffffff;" vertex="1" parent="1">
+                    <mxGeometry x="270" y="750" width="84" height="98" as="geometry"/>
+                </mxCell>
+                <mxCell id="11" value="&lt;font color=&quot;#ffffff&quot; style=&quot;font-size: 17px;&quot;&gt;Mobile&amp;nbsp;&lt;br&gt;Cloud Web&lt;/font&gt;" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;gradientColor=#FF4F8B;gradientDirection=north;fillColor=#BC1356;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.mobile_application;" vertex="1" parent="1">
+                    <mxGeometry x="630" y="485" width="130" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="16" style="edgeStyle=none;html=1;entryX=0;entryY=1;entryDx=170;entryDy=0;entryPerimeter=0;strokeWidth=6;fontSize=19;fillColor=#f5f5f5;strokeColor=#666666;" edge="1" parent="1" source="6" target="2">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="18" style="edgeStyle=none;html=1;entryX=0;entryY=0;entryDx=110;entryDy=0;entryPerimeter=0;strokeWidth=6;fontSize=19;fillColor=#f5f5f5;strokeColor=#666666;" edge="1" parent="1" source="17" target="2">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="17" value="&lt;font style=&quot;font-size: 15px;&quot;&gt;Temperature&lt;/font&gt;" style="outlineConnect=0;fillColor=#f8cecc;strokeColor=#4e2927;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.iot_thing_temperature_sensor;fillStyle=auto;shadow=0;" vertex="1" parent="1">
+                    <mxGeometry x="386" y="221.5" width="78" height="78" as="geometry"/>
+                </mxCell>
+                <mxCell id="19" value="" style="image;html=1;image=img/lib/clip_art/computers/Laptop_128x128.png;shadow=0;sketch=0;fillStyle=auto;strokeColor=#4e2927;fontSize=19;" vertex="1" parent="1">
+                    <mxGeometry x="640" y="240" width="140" height="170" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
