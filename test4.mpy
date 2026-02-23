@@ -1,0 +1,104 @@
+import usocket as socket
+from machine import Pin, ADC
+from utime import sleep
+import network
+try:
+    from bps_cre import *     
+except:
+    pass
+
+# Setup the sensor and Wi-Fi
+adc = ADC(Pin(34))  # Analog sensor on GPIO34
+adc.atten(ADC.ATTN_11DB)  # Full range: 3.3v
+adc.width(ADC.WIDTH_12BIT)  # 12-bit resolution
+
+# Wi-Fi Credentials
+ssid = bps_ssid     # your network/hotspot/ssid name.
+passw = bps_passw    # your network/hotspot/ssid password.
+
+# Connect to the network
+sta = network.WLAN(network.STA_IF) # station interface.
+sta.active(True)
+sta.connect(ssid, passw)  # connecting to network
+
+while not sta.isconnected():
+    pass
+
+if sta.isconnected():
+    print("Connection status:", sta.isconnected())
+    
+sta.ifconfig(('192.168.1.23', '255.255.255.0', '192.168.1.1', '218.248.112.65'))
+print(sta.ifconfig())
+print("http://192.168.1.23")
+
+# HTML page with embedded JavaScript for plotting data
+def web_page():
+    html = """<html>
+    <head>
+        <title>Sensor Data Plot</title>
+        <style>
+            body { font-family: Arial; text-align: center; margin-top: 50px; }
+            canvas { width: 100%; max-width: 600px; height: 400px; }
+        </style>
+    </head>
+    <body>
+        <h1>Live Sensor Data</h1>
+        <canvas id="chart"></canvas>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script>
+            var ctx = document.getElementById('chart').getContext('2d');
+            var chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Sensor Value',
+                        borderColor: 'rgb(75, 192, 192)',
+                        data: []
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: { display: true, title: { display: true, text: 'Time' } },
+                        y: { display: true, title: { display: true, text: 'Sensor Value' } }
+                    }
+                }
+            });
+
+            function updateChart(data) {
+                chart.data.labels.push(new Date().toLocaleTimeString());
+                chart.data.datasets[0].data.push(data);
+                chart.update();
+            }
+
+            setInterval(function() {
+                fetch('/data').then(response => response.json()).then(data => {
+                    updateChart(data.value);
+                });
+            }, 1000);  // Fetch data every second
+        </script>
+    </body>
+    </html>"""
+    return html
+
+# Function to handle incoming requests and serve content
+def serve():
+    so = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    so.bind(('', 80))
+    so.listen(5)
+
+    while True:
+        conn, addr = so.accept()
+        request = conn.recv(1024).decode()
+        if request.startswith('GET /data'):
+            sensor_value = adc.read()
+            response = '{"value": ' + str(sensor_value) + '}'
+            conn.send('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n' + response)
+        else:
+            response = web_page()
+            conn.send('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n' + response)
+        conn.close()
+
+# Start the server
+serve()
