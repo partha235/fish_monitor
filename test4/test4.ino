@@ -7,8 +7,8 @@
 #include "soc/rtc_cntl_reg.h"
 
 // ================= USER CONFIG =================
-const char* ssid = "bps_wifi";
-const char* password = "sagabps@235";
+const char* ssid = "bps_cam";
+const char* password = "12345678";
 const int defaultFPS = 5;
 
 // Logging tag
@@ -71,72 +71,51 @@ httpd_handle_t server = NULL;
 
 // ================= CAMERA INIT =================
 bool initCamera() {
-    camera_config_t config;
-    config.ledc_channel = LEDC_CHANNEL_0;
-    config.ledc_timer = LEDC_TIMER_0;
-    config.pin_d0 = Y2_GPIO_NUM;
-    config.pin_d1 = Y3_GPIO_NUM;
-    config.pin_d2 = Y4_GPIO_NUM;
-    config.pin_d3 = Y5_GPIO_NUM;
-    config.pin_d4 = Y6_GPIO_NUM;
-    config.pin_d5 = Y7_GPIO_NUM;
-    config.pin_d6 = Y8_GPIO_NUM;
-    config.pin_d7 = Y9_GPIO_NUM;
-    config.pin_xclk = XCLK_GPIO_NUM;
-    config.pin_pclk = PCLK_GPIO_NUM;
-    config.pin_vsync = VSYNC_GPIO_NUM;
-    config.pin_href = HREF_GPIO_NUM;
-    config.pin_sccb_sda = SIOD_GPIO_NUM;
-    config.pin_sccb_scl = SIOC_GPIO_NUM;
-    config.pin_pwdn = PWDN_GPIO_NUM;
-    config.pin_reset = RESET_GPIO_NUM;
-    config.xclk_freq_hz = 20000000;
-    config.pixel_format = PIXFORMAT_JPEG;  // Required for streaming
-    config.jpeg_quality = 12;              // Start reasonable
-    config.fb_count = 1;
-    config.grab_mode = CAMERA_GRAB_LATEST; // Better for streaming
-    config.fb_location = CAMERA_FB_IN_PSRAM; // Prefer PSRAM if available
+  camera_config_t config;
+  config.ledc_channel = LEDC_CHANNEL_0;
+  config.ledc_timer = LEDC_TIMER_0;
+  config.pin_d0 = Y2_GPIO_NUM;
+  config.pin_d1 = Y3_GPIO_NUM;
+  config.pin_d2 = Y4_GPIO_NUM;
+  config.pin_d3 = Y5_GPIO_NUM;
+  config.pin_d4 = Y6_GPIO_NUM;
+  config.pin_d5 = Y7_GPIO_NUM;
+  config.pin_d6 = Y8_GPIO_NUM;
+  config.pin_d7 = Y9_GPIO_NUM;
+  config.pin_xclk = XCLK_GPIO_NUM;
+  config.pin_pclk = PCLK_GPIO_NUM;
+  config.pin_vsync = VSYNC_GPIO_NUM;
+  config.pin_href = HREF_GPIO_NUM;
+  config.pin_sccb_sda = SIOD_GPIO_NUM;
+  config.pin_sccb_scl = SIOC_GPIO_NUM;
+  config.pin_pwdn = PWDN_GPIO_NUM;
+  config.pin_reset = RESET_GPIO_NUM;
+  config.xclk_freq_hz = 20000000;
+  config.pixel_format = PIXFORMAT_JPEG;  // Required for streaming
+  config.jpeg_quality = 12;              // Start reasonable
+  config.fb_count = 1;
+  config.grab_mode = CAMERA_GRAB_LATEST; // Better for streaming
+  config.fb_location = CAMERA_FB_IN_PSRAM; // Prefer PSRAM if available
 
-    // Try higher res if PSRAM available
-    if (psramFound()) {
-        Serial.println("PSRAM FOUND - enabling higher quality");
-        config.frame_size = FRAMESIZE_SVGA;  // 800x600 — good start for OV3660
-        // config.frame_size = FRAMESIZE_UXGA; // 1600x1200 — try this if stable
-        config.jpeg_quality = 10;
-        config.fb_count = 2;                 // Double buffering reduces lag
-    } else {
-        Serial.println("No PSRAM - limiting resolution");
-        config.frame_size = FRAMESIZE_VGA;   // 640x480 fallback
-        config.fb_location = CAMERA_FB_IN_DRAM;
-    }
+  // Try higher res if PSRAM available
+  if (psramFound()) {
+      Serial.println("PSRAM FOUND - enabling higher quality");
+      config.frame_size = FRAMESIZE_SVGA;  // 800x600 — good start for OV3660
+      // config.frame_size = FRAMESIZE_UXGA; // 1600x1200 — try this if stable
+      config.jpeg_quality = 10;
+      config.fb_count = 2;                 // Double buffering reduces lag
+  } else {
+      Serial.println("No PSRAM - limiting resolution");
+      config.frame_size = FRAMESIZE_VGA;   // 640x480 fallback
+      config.fb_location = CAMERA_FB_IN_DRAM;
+  }
 
-    esp_err_t err = esp_camera_init(&config);
-    if (err != ESP_OK) {
-        Serial.printf("Camera init failed with error 0x%x\n", err);
-        return false;
-    }
+  esp_err_t err = esp_camera_init(&config);
+  if (err != ESP_OK) {
+      Serial.printf("Camera init failed with error 0x%x\n", err);
+      return true;
+  }
 
-    sensor_t *s = esp_camera_sensor_get();
-
-    if (s->id.PID == OV3660_PID) {
-        Serial.println("OV3660 detected - applying tweaks");
-        s->set_vflip(s, 1);          // Usually needed
-        s->set_brightness(s, 1);     // Slight boost
-        s->set_saturation(s, -1);    // Less oversaturated colors
-        s->set_contrast(s, 1);
-        s->set_sharpness(s, 1);
-        s->set_gainceiling(s, (gainceiling_t)2); // Helps in low light
-        s->set_aec2(s, 0);           // Disable DSP AEC for better control
-        s->set_ae_level(s, 0);
-        s->set_aec_value(s, 300);    // Adjust exposure (0-1200)
-        s->set_agc_gain(s, 0);       // Auto gain — tweak if needed
-    }
-
-    // Optional: Drop initial framesize for faster startup, but allow higher later
-    // s->set_framesize(s, FRAMESIZE_SVGA);  // Uncomment if you want to force after tweaks
-
-    Serial.println("Camera initialized OK");
-    return true;
 }
 
 // ================= LED INIT =================
@@ -236,13 +215,14 @@ void startServer() {
 
 // ================= SETUP =================
 void setup() {
-
-  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+  delay(200);
+  // WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
 
   Serial.begin(115200);
   initLED();
 
   if (!initCamera()) {
+    Serial.println("camera not initiated");
     while (true) {
       digitalWrite(LED_GPIO_NUM, HIGH);
       delay(200);
@@ -250,17 +230,22 @@ void setup() {
       delay(200);
     }
   }
-
-  WiFi.begin(ssid, password);
-  Serial.print("Connecting");
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+  else{
+      Serial.println("camera initiated");
   }
+  delay(500);
+  
+  // ─── WiFi Access Point ─────────────────────────────────
+  WiFi.mode(WIFI_AP);
+  WiFi.softAPConfig(IPAddress(192,168,4,23),
+                    IPAddress(192,168,4,23),
+                    IPAddress(255,255,255,0));
+  WiFi.softAP(ssid, password);
 
-  Serial.println("\nConnected");
-  Serial.println(WiFi.localIP());
+  Serial.println("Access Point started");
+  Serial.print("SSID     : "); Serial.println(ssid);
+  Serial.print("Password : "); Serial.println(password);
+  Serial.print("IP       : http://"); Serial.print(WiFi.softAPIP()); Serial.println("/\n");
 
   startServer();
 }
