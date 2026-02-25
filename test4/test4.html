@@ -1,0 +1,25 @@
+<html>
+    <head><title>Camera Monitor</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: Arial; text-align: center; margin-top: 30px; }
+        button { font-size: 18px; padding: 10px 20px; margin: 10px; }
+        img { width: 80%; max-width: 480px; height: auto; }
+    </style>
+    </head>
+    <body>
+        <h1>Camera Monitor</h1>
+        <img src="/stream" alt="Live stream"><br>
+        <h2>LED Control</h2>
+        <button onclick="toggleLed('on')">ON</button>
+        <button onclick="toggleLed('off')">OFF</button>
+        <script>
+            function toggleLed(state) {
+                fetch('/led?state=' + state)
+                    .then(response => response.text())
+                    .then(data => console.log(data))
+                    .catch(error => console.error('Error:', error));
+            }
+        </script>
+    </body>
+</html>

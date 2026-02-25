@@ -1,173 +1,121 @@
-// this program takes pic for every 20s and stream in web. 
+// this program capture images
+
+#include <Arduino.h>
 #include "esp_camera.h"
-#include <WiFi.h>
-#include "esp_http_server.h"
+#include <esp_log.h>
 
-// =======================
-// WiFi Credentials
-// =======================
-const char* ssid = "bps_wifi";
-const char* password = "sagabps@235";
+// Logging tag
+static const char *TAG = "CAMERA";
 
-// =======================
-// AI Thinker ESP32-CAM Pins
-// =======================
-#define PWDN_GPIO_NUM     32
-#define RESET_GPIO_NUM    -1
-#define XCLK_GPIO_NUM      0
-#define SIOD_GPIO_NUM     26
-#define SIOC_GPIO_NUM     27
+// === ESP32-S3 Common Camera Pinout (matches many S3-CAM / S3-EYE boards) ===
+#define PWDN_GPIO_NUM    -1
+#define RESET_GPIO_NUM   -1
+#define XCLK_GPIO_NUM    15
+#define SIOD_GPIO_NUM     4   // SCCB SDA
+#define SIOC_GPIO_NUM     5   // SCCB SCL
+#define Y2_GPIO_NUM      11
+#define Y3_GPIO_NUM       9
+#define Y4_GPIO_NUM       8
+#define Y5_GPIO_NUM      10
+#define Y6_GPIO_NUM      12
+#define Y7_GPIO_NUM      18
+#define Y8_GPIO_NUM      17
+#define Y9_GPIO_NUM      16
+#define VSYNC_GPIO_NUM    6
+#define HREF_GPIO_NUM     7
+#define PCLK_GPIO_NUM    13
 
-#define Y9_GPIO_NUM       35
-#define Y8_GPIO_NUM       34
-#define Y7_GPIO_NUM       39
-#define Y6_GPIO_NUM       36
-#define Y5_GPIO_NUM       21
-#define Y4_GPIO_NUM       19
-#define Y3_GPIO_NUM       18
-#define Y2_GPIO_NUM        5
-#define VSYNC_GPIO_NUM    25
-#define HREF_GPIO_NUM     23
-#define PCLK_GPIO_NUM     22
+#define LED_GPIO_NUM      2   // Built-in LED on many S3-CAM boards
 
-httpd_handle_t server = NULL;
+static camera_config_t camera_config = {
+    .pin_pwdn       = PWDN_GPIO_NUM,
+    .pin_reset      = RESET_GPIO_NUM,
+    .pin_xclk       = XCLK_GPIO_NUM,
+    .pin_sccb_sda   = SIOD_GPIO_NUM,
+    .pin_sccb_scl   = SIOC_GPIO_NUM,
+    .pin_d7         = Y9_GPIO_NUM,
+    .pin_d6         = Y8_GPIO_NUM,
+    .pin_d5         = Y7_GPIO_NUM,
+    .pin_d4         = Y6_GPIO_NUM,
+    .pin_d3         = Y5_GPIO_NUM,
+    .pin_d2         = Y4_GPIO_NUM,
+    .pin_d1         = Y3_GPIO_NUM,
+    .pin_d0         = Y2_GPIO_NUM,
+    .pin_vsync      = VSYNC_GPIO_NUM,
+    .pin_href       = HREF_GPIO_NUM,
+    .pin_pclk       = PCLK_GPIO_NUM,
+    .xclk_freq_hz   = 20000000,          // 20 MHz — stable for most OV2640/OV3660
+    .ledc_timer     = LEDC_TIMER_0,
+    .ledc_channel   = LEDC_CHANNEL_0,
+    .pixel_format   = PIXFORMAT_RGB565,
+    .frame_size     = FRAMESIZE_QVGA,     // 320×240 — tiny (~20–50 KB buffer)
+    .jpeg_quality   = 30,                 // Higher number = smaller file (less memory)
+    .fb_count       = 1,
+    .fb_location    = CAMERA_FB_IN_DRAM,  // Explicitly use internal RAM (add this line!)
+    .grab_mode      = CAMERA_GRAB_WHEN_EMPTY
+};
 
-// =======================
-// HTML PAGE
-// =======================
-const char INDEX_HTML[] PROGMEM = R"rawliteral(
-<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ESP32-CAM Snapshot</title>
+esp_err_t camera_init() {
+    if (PWDN_GPIO_NUM != -1) {
+        pinMode(PWDN_GPIO_NUM, OUTPUT);
+        digitalWrite(PWDN_GPIO_NUM, LOW);
+        delay(10);
+    }
 
-<script>
-setInterval(function(){
-    document.getElementById("cam").src = "/capture?t=" + new Date().getTime();
-}, 20000);
-</script>
+    esp_err_t err = esp_camera_init(&camera_config);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Camera init failed: 0x%x", err);
+        return err;
+    }
 
-</head>
-<body style="text-align:center; font-family:Arial;">
-
-<h2>ESP32-CAM Snapshot (Every 20s)</h2>
-
-<img id="cam" src="/capture" width="320">
-
-</body>
-</html>
-)rawliteral";
-
-// =======================
-// Root Handler
-// =======================
-static esp_err_t index_handler(httpd_req_t *req)
-{
-  httpd_resp_set_type(req, "text/html");
-  return httpd_resp_send(req, INDEX_HTML, strlen(INDEX_HTML));
+    ESP_LOGI(TAG, "Camera initialized OK");
+    return ESP_OK;
 }
 
-// =======================
-// Capture Image Handler
-// =======================
-static esp_err_t capture_handler(httpd_req_t *req)
-{
-  camera_fb_t * fb = esp_camera_fb_get();
-  if (!fb) {
-    httpd_resp_send_500(req);
-    return ESP_FAIL;
-  }
-
-  httpd_resp_set_type(req, "image/jpeg");
-  httpd_resp_send(req, (const char *)fb->buf, fb->len);
-  esp_camera_fb_return(fb);
-  return ESP_OK;
-}
-
-// =======================
-// Start Web Server
-// =======================
-void startCameraServer()
-{
-  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-  httpd_start(&server, &config);
-
-  httpd_uri_t index_uri = {
-    .uri       = "/",
-    .method    = HTTP_GET,
-    .handler   = index_handler,
-    .user_ctx  = NULL
-  };
-
-  httpd_uri_t capture_uri = {
-    .uri       = "/capture",
-    .method    = HTTP_GET,
-    .handler   = capture_handler,
-    .user_ctx  = NULL
-  };
-
-  httpd_register_uri_handler(server, &index_uri);
-  httpd_register_uri_handler(server, &capture_uri);
-}
-
-// =======================
-// Setup
-// =======================
 void setup() {
-  Serial.begin(115200);
-  Serial.setDebugOutput(false);
+    Serial.begin(115200);
+    delay(1000);
+    Serial.println("\nESP32-S3 Camera Test");
 
-  camera_config_t config;
-  config.ledc_channel = LEDC_CHANNEL_0;
-  config.ledc_timer   = LEDC_TIMER_0;
-  config.pin_d0       = Y2_GPIO_NUM;
-  config.pin_d1       = Y3_GPIO_NUM;
-  config.pin_d2       = Y4_GPIO_NUM;
-  config.pin_d3       = Y5_GPIO_NUM;
-  config.pin_d4       = Y6_GPIO_NUM;
-  config.pin_d5       = Y7_GPIO_NUM;
-  config.pin_d6       = Y8_GPIO_NUM;
-  config.pin_d7       = Y9_GPIO_NUM;
-  config.pin_xclk     = XCLK_GPIO_NUM;
-  config.pin_pclk     = PCLK_GPIO_NUM;
-  config.pin_vsync    = VSYNC_GPIO_NUM;
-  config.pin_href     = HREF_GPIO_NUM;
-  config.pin_sccb_sda = SIOD_GPIO_NUM;
-  config.pin_sccb_scl = SIOC_GPIO_NUM;
-  config.pin_pwdn     = PWDN_GPIO_NUM;
-  config.pin_reset    = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_JPEG;
+    pinMode(LED_GPIO_NUM, OUTPUT);
+    digitalWrite(LED_GPIO_NUM, LOW);
 
-  config.frame_size = FRAMESIZE_QVGA;   // 320x240
-  config.jpeg_quality = 12;
-  config.fb_count = 1;
+    esp_err_t err = camera_init();
+    if (err != ESP_OK) {
+        Serial.printf("Init failed: 0x%x → check wiring, PSRAM enabled, board selection\n", err);
+        while (1) {
+            digitalWrite(LED_GPIO_NUM, HIGH); delay(200);
+            digitalWrite(LED_GPIO_NUM, LOW);  delay(200);
+        }
+    }
 
-  if (esp_camera_init(&config) != ESP_OK) {
-    Serial.println("Camera init failed");
-    return;
-  }
-
-  WiFi.begin(ssid, password);
-  Serial.print("Connecting to WiFi");
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-
-  Serial.println("");
-  Serial.println("WiFi connected!");
-  Serial.print("Open this URL: http://");
-  Serial.println(WiFi.localIP());
-
-  startCameraServer();
+    Serial.println("Camera ready. Capturing every 3s...");
 }
 
-// =======================
-// Loop
-// =======================
 void loop() {
-  delay(1000);
+    digitalWrite(LED_GPIO_NUM, HIGH);  // LED on during capture
+
+    camera_fb_t *fb = esp_camera_fb_get();
+    if (!fb) {
+        ESP_LOGE(TAG, "Capture failed");
+        digitalWrite(LED_GPIO_NUM, LOW);
+        delay(1000);
+        return;
+    }
+
+    Serial.printf("Captured %dx%d JPEG → %u bytes\n", fb->width, fb->height, fb->len);
+
+    // Optional: show JPEG start bytes (FF D8 FF ...)
+    if (fb->len > 10) {
+        Serial.print("Header: ");
+        for (int i = 0; i < 10; i++) {
+            Serial.printf("%02X ", fb->buf[i]);
+        }
+        Serial.println();
+    }
+
+    esp_camera_fb_return(fb);
+    digitalWrite(LED_GPIO_NUM, LOW);
+
+    delay(3000);
 }
