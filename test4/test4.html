@@ -10,16 +10,5 @@
     <body>
         <h1>Camera Monitor</h1>
         <img src="/stream" alt="Live stream"><br>
-        <h2>LED Control</h2>
-        <button onclick="toggleLed('on')">ON</button>
-        <button onclick="toggleLed('off')">OFF</button>
-        <script>
-            function toggleLed(state) {
-                fetch('/led?state=' + state)
-                    .then(response => response.text())
-                    .then(data => console.log(data))
-                    .catch(error => console.error('Error:', error));
-            }
-        </script>
     </body>
 </html>
