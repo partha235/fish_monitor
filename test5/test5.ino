@@ -90,9 +90,7 @@ bool initCamera() {
 #define EI_CAMERA_RAW_FRAME_BUFFER_ROWS 240
 #define EI_CAMERA_FRAME_BYTE_SIZE 3
 
-  uint8_t snapshot_buf[EI_CAMERA_RAW_FRAME_BUFFER_COLS *
-    EI_CAMERA_RAW_FRAME_BUFFER_ROWS *
-    EI_CAMERA_FRAME_BYTE_SIZE];
+uint8_t *snapshot_buf;
 
 /**
 * @brief      Arduino setup function
@@ -116,6 +114,16 @@ void setup()
       }
       delay(500);
 
+      snapshot_buf = (uint8_t*)ps_malloc(
+        EI_CAMERA_RAW_FRAME_BUFFER_COLS *
+        EI_CAMERA_RAW_FRAME_BUFFER_ROWS *
+        EI_CAMERA_FRAME_BYTE_SIZE
+    );
+    
+    if (!snapshot_buf) {
+        Serial.println("PSRAM allocation failed!");
+        while(true);
+    }
 
     //comment out the below line to start inference immediately after upload
     Serial.println("Edge Impulse Inferencing Demo");
