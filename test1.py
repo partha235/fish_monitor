@@ -3,7 +3,7 @@ import numpy as np
 import requests
 import time
 
-url = "http://192.168.1.7/capture"
+url = "http://192.168.4.23/capture"
 
 while True:
     try:
