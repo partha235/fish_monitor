@@ -27,15 +27,11 @@
 #define LED_GPIO_NUM      2   // Built-in LED on many S3-CAM boards
 
 
-/* Constant defines -------------------------------------------------------- */
-#define EI_CAMERA_RAW_FRAME_BUFFER_COLS           320
-#define EI_CAMERA_RAW_FRAME_BUFFER_ROWS           240
-#define EI_CAMERA_FRAME_BYTE_SIZE                 3
+
 
 /* Private variables ------------------------------------------------------- */
 static bool debug_nn = false; // Set this to true to see e.g. features generated from the raw signal
 static bool is_initialised = false;
-uint8_t *snapshot_buf; //points to the output of the capture
 
 // ================= CAMERA INIT =================
 bool initCamera() {
@@ -59,16 +55,16 @@ bool initCamera() {
     config.pin_pwdn = PWDN_GPIO_NUM;
     config.pin_reset = RESET_GPIO_NUM;
     config.xclk_freq_hz = 20000000;
-    config.pixel_format = PIXFORMAT_JPEG;  // Required for streaming
+    config.pixel_format = PIXFORMAT_RGB565;  // Required for streaming
     config.jpeg_quality = 12;              // Start reasonable
-    config.fb_count = 1;
+    config.fb_count = 2;
     config.grab_mode = CAMERA_GRAB_LATEST; // Better for streaming
     config.fb_location = CAMERA_FB_IN_PSRAM; // Prefer PSRAM if available
   
     // Try higher res if PSRAM available
     if (psramFound()) {
         Serial.println("PSRAM FOUND - enabling higher quality");
-        config.frame_size = FRAMESIZE_SVGA;  // 800x600 — good start for OV3660
+        config.frame_size = FRAMESIZE_QVGA;  // 320x240  
         // config.frame_size = FRAMESIZE_UXGA; // 1600x1200 — try this if stable
         config.jpeg_quality = 10;
         config.fb_count = 2;                 // Double buffering reduces lag
@@ -79,23 +75,33 @@ bool initCamera() {
     }
   
     esp_err_t err = esp_camera_init(&config);
-    if (err != ESP_OK) {
-        Serial.printf("Camera init failed with error 0x%x\n", err);
-        return true;
-    }
+            if (err != ESP_OK) {
+                Serial.printf("Camera init failed with error 0x%x\n", err);
+                return false;
+            }
+
+            is_initialised = true;   // ✅ ADD THIS
+            return true;
   
   }
 
-/* Function definitions ------------------------------------------------------- */
-bool ei_camera_init(void);
-void ei_camera_deinit(void);
-bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf) ;
+/* Constant defines -------------------------------------------------------- */
+#define EI_CAMERA_RAW_FRAME_BUFFER_COLS 320
+#define EI_CAMERA_RAW_FRAME_BUFFER_ROWS 240
+#define EI_CAMERA_FRAME_BYTE_SIZE 3
+
+  uint8_t snapshot_buf[EI_CAMERA_RAW_FRAME_BUFFER_COLS *
+    EI_CAMERA_RAW_FRAME_BUFFER_ROWS *
+    EI_CAMERA_FRAME_BYTE_SIZE];
 
 /**
 * @brief      Arduino setup function
 */
 void setup()
 {
+    Serial.begin(115200);
+    delay(1000);
+
     if (!initCamera()) {
         Serial.println("camera not initiated");
         while (true) {
@@ -110,18 +116,9 @@ void setup()
       }
       delay(500);
 
-      
-    // put your setup code here, to run once:
-    Serial.begin(115200);
+
     //comment out the below line to start inference immediately after upload
-    while (!Serial);
     Serial.println("Edge Impulse Inferencing Demo");
-    if (ei_camera_init() == false) {
-        ei_printf("Failed to initialize Camera!\r\n");
-    }
-    else {
-        ei_printf("Camera initialized\r\n");
-    }
 
     ei_printf("\nStarting continious inference in 2 seconds...\n");
     ei_sleep(2000);
@@ -140,22 +137,16 @@ void loop()
         return;
     }
 
-    snapshot_buf = (uint8_t*)malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
-
-    // check if allocation was successful
-    if(snapshot_buf == nullptr) {
-        ei_printf("ERR: Failed to allocate snapshot buffer!\n");
-        return;
-    }
-
     ei::signal_t signal;
     signal.total_length = EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT;
     signal.get_data = &ei_camera_get_data;
 
-    if (ei_camera_capture((size_t)EI_CLASSIFIER_INPUT_WIDTH, (size_t)EI_CLASSIFIER_INPUT_HEIGHT, snapshot_buf) == false) {
-        ei_printf("Failed to capture image\r\n");
-        free(snapshot_buf);
-        return;
+    if (ei_camera_capture(
+        EI_CLASSIFIER_INPUT_WIDTH,
+        EI_CLASSIFIER_INPUT_HEIGHT,
+        snapshot_buf) == false) {
+    ei_printf("Failed to capture image\r\n");
+    return;
     }
 
     // Run the classifier
@@ -219,7 +210,6 @@ void loop()
 #endif
 
 
-    free(snapshot_buf);
 
 }
 
@@ -228,42 +218,6 @@ void loop()
  *
  * @retval  false if initialisation failed
  */
-bool ei_camera_init(void) {
-
-    if (is_initialised) return true;
-
-#if defined(CAMERA_MODEL_ESP_EYE)
-  pinMode(13, INPUT_PULLUP);
-  pinMode(14, INPUT_PULLUP);
-#endif
-
-    //initialize the camera
-    esp_err_t err = esp_camera_init(&camera_config);
-    if (err != ESP_OK) {
-      Serial.printf("Camera init failed with error 0x%x\n", err);
-      return false;
-    }
-
-    sensor_t * s = esp_camera_sensor_get();
-    // initial sensors are flipped vertically and colors are a bit saturated
-    if (s->id.PID == OV3660_PID) {
-      s->set_vflip(s, 1); // flip it back
-      s->set_brightness(s, 1); // up the brightness just a bit
-      s->set_saturation(s, 0); // lower the saturation
-    }
-
-#if defined(CAMERA_MODEL_M5STACK_WIDE)
-    s->set_vflip(s, 1);
-    s->set_hmirror(s, 1);
-#elif defined(CAMERA_MODEL_ESP_EYE)
-    s->set_vflip(s, 1);
-    s->set_hmirror(s, 1);
-    s->set_awb_gain(s, 1);
-#endif
-
-    is_initialised = true;
-    return true;
-}
 
 /**
  * @brief      Stop streaming of sensor data
@@ -295,69 +249,68 @@ void ei_camera_deinit(void) {
  * @retval     false if not initialised, image captured, rescaled or cropped failed
  *
  */
-bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf) {
-    bool do_resize = false;
+ 
+ 
+bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf)
+ {
+     if (!is_initialised) {
+         ei_printf("ERR: Camera not initialized\r\n");
+         return false;
+     }
+ 
+     camera_fb_t *fb = esp_camera_fb_get();
+     if (!fb) {
+         ei_printf("Camera capture failed\n");
+         return false;
+     }
+ 
+     // Convert RGB565 → RGB888 directly into snapshot_buf
+     for (size_t i = 0, j = 0; i < fb->len; i += 2, j += 3) {
+         uint16_t pixel = (fb->buf[i] << 8) | fb->buf[i + 1];
+ 
+         snapshot_buf[j]     = ((pixel >> 11) & 0x1F) << 3;  // R
+         snapshot_buf[j + 1] = ((pixel >> 5) & 0x3F) << 2;   // G
+         snapshot_buf[j + 2] = (pixel & 0x1F) << 3;          // B
+     }
+ 
+     esp_camera_fb_return(fb);
+ 
+     // Resize properly
+     if (img_width != EI_CAMERA_RAW_FRAME_BUFFER_COLS ||
+         img_height != EI_CAMERA_RAW_FRAME_BUFFER_ROWS) {
+ 
+         ei::image::processing::crop_and_interpolate_rgb888(
+             snapshot_buf,
+             EI_CAMERA_RAW_FRAME_BUFFER_COLS,
+             EI_CAMERA_RAW_FRAME_BUFFER_ROWS,
+             out_buf,
+             img_width,
+             img_height
+         );
+     }
+ 
+     return true;
+ }
 
-    if (!is_initialised) {
-        ei_printf("ERR: Camera is not initialized\r\n");
-        return false;
-    }
-
-    camera_fb_t *fb = esp_camera_fb_get();
-
-    if (!fb) {
-        ei_printf("Camera capture failed\n");
-        return false;
-    }
-
-   bool converted = fmt2rgb888(fb->buf, fb->len, PIXFORMAT_JPEG, snapshot_buf);
-
-   esp_camera_fb_return(fb);
-
-   if(!converted){
-       ei_printf("Conversion failed\n");
-       return false;
-   }
-
-    if ((img_width != EI_CAMERA_RAW_FRAME_BUFFER_COLS)
-        || (img_height != EI_CAMERA_RAW_FRAME_BUFFER_ROWS)) {
-        do_resize = true;
-    }
-
-    if (do_resize) {
-        ei::image::processing::crop_and_interpolate_rgb888(
-        out_buf,
-        EI_CAMERA_RAW_FRAME_BUFFER_COLS,
-        EI_CAMERA_RAW_FRAME_BUFFER_ROWS,
-        out_buf,
-        img_width,
-        img_height);
-    }
-
-
-    return true;
-}
 
 static int ei_camera_get_data(size_t offset, size_t length, float *out_ptr)
 {
-    // we already have a RGB888 buffer, so recalculate offset into pixel index
     size_t pixel_ix = offset * 3;
-    size_t pixels_left = length;
-    size_t out_ptr_ix = 0;
 
-    while (pixels_left != 0) {
-        // Swap BGR to RGB here
-        // due to https://github.com/espressif/esp32-camera/issues/379
-        out_ptr[out_ptr_ix] = (snapshot_buf[pixel_ix + 2] << 16) + (snapshot_buf[pixel_ix + 1] << 8) + snapshot_buf[pixel_ix];
+    for (size_t i = 0; i < length; i++) {
 
-        // go to the next pixel
-        out_ptr_ix++;
-        pixel_ix+=3;
-        pixels_left--;
+        uint8_t r = snapshot_buf[pixel_ix];
+        uint8_t g = snapshot_buf[pixel_ix + 1];
+        uint8_t b = snapshot_buf[pixel_ix + 2];
+
+        out_ptr[i] = (r << 16) | (g << 8) | b;
+
+        pixel_ix += 3;
     }
-    // and done!
+
     return 0;
 }
+
 
 #if !defined(EI_CLASSIFIER_SENSOR) || EI_CLASSIFIER_SENSOR != EI_CLASSIFIER_SENSOR_CAMERA
 #error "Invalid model for current sensor"
