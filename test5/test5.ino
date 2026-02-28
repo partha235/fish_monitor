@@ -138,7 +138,7 @@ canvas{
 <h1>🐟 Fish Monitor System</h1>
 
 <h2>Live Webcam Stream</h2>
-<img src="/video" alt="Webcam Stream">
+<img src="/stream" alt="Webcam Stream">
 
 <h2>HC-SR04 Distance Chart (cm)</h2>
 <canvas id="chart"></canvas>
@@ -293,19 +293,39 @@ static esp_err_t stream_handler(httpd_req_t *req){
   return ESP_OK;
 }
 
+static esp_err_t capture_handler(httpd_req_t *req){
+
+    camera_fb_t *fb = esp_camera_fb_get();
+    if(!fb){
+      httpd_resp_send_500(req);
+      return ESP_FAIL;
+    }
+  
+    httpd_resp_set_type(req, "image/jpeg");
+    httpd_resp_set_hdr(req, "Content-Disposition", "inline; filename=capture.jpg");
+  
+    httpd_resp_send(req, (const char*)fb->buf, fb->len);
+  
+    esp_camera_fb_return(fb);
+    return ESP_OK;
+  }
+
+
 // ================= SERVER START =================
 void startServer(){
 
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
 
-  httpd_uri_t index_uri = { "/", HTTP_GET, index_handler, NULL };
-  httpd_uri_t stream_uri = { "/stream", HTTP_GET, stream_handler, NULL };
-  httpd_uri_t data_uri = { "/data", HTTP_GET, data_handler, NULL };
+  httpd_uri_t index_uri   = { "/",        HTTP_GET, index_handler,   NULL };
+  httpd_uri_t stream_uri  = { "/stream",  HTTP_GET, stream_handler,  NULL };
+  httpd_uri_t data_uri    = { "/data",    HTTP_GET, data_handler,    NULL };
+  httpd_uri_t capture_uri = { "/capture", HTTP_GET, capture_handler, NULL };
 
   if(httpd_start(&server,&config)==ESP_OK){
     httpd_register_uri_handler(server,&index_uri);
     httpd_register_uri_handler(server,&stream_uri);
     httpd_register_uri_handler(server,&data_uri);
+    httpd_register_uri_handler(server,&capture_uri);   // ✅ ADD THIS
   }
 }
 

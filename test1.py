@@ -1,36 +1,29 @@
 import cv2
 import numpy as np
 import requests
-import time
 
-url = "http://192.168.4.23/capture"
+url = "http://192.168.4.1/stream"
 
-while True:
-    try:
-        response = requests.get(url, timeout=5)
+stream = requests.get(url, stream=True)
 
-        if response.status_code != 200:
-            print("Failed to get image")
-            continue
+bytes_data = b""
 
-        img_array = np.frombuffer(response.content, dtype=np.uint8)
-        img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+for chunk in stream.iter_content(chunk_size=1024):
+    bytes_data += chunk
 
-        if img is None:
-            print("Image decode failed")
-            continue
+    a = bytes_data.find(b'\xff\xd8')  # JPEG start
+    b = bytes_data.find(b'\xff\xd9')  # JPEG end
 
-        cv2.imshow("ESP32-CAM", img)
+    if a != -1 and b != -1:
+        jpg = bytes_data[a:b+2]
+        bytes_data = bytes_data[b+2:]
 
-        cv2.imwrite("insect.jpg", img)
+        img = cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+        if img is not None:
+            cv2.imshow("ESP32 Stream", img)
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
-
-        time.sleep(20)  # match your ESP refresh (20 sec)
-
-    except Exception as e:
-        print("Error:", e)
-        break
 
 cv2.destroyAllWindows()
