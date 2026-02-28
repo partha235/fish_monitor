@@ -2,6 +2,8 @@
 #include <WiFi.h>
 #include "esp_camera.h"
 #include <esp_http_server.h>
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 
 // ================= WIFI CONFIG =================
 const char* ssid = "bps_cam";
@@ -56,61 +58,151 @@ httpd_handle_t server = NULL;
 // ================= HTML PAGE =================
 const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Fish Monitor</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fish Monitor System</title>
+
+<!-- Chart.js CDN -->
+<script src='https://cdn.jsdelivr.net/npm/chart.js'></script>
+
 <style>
-body{background:#0f2027;color:white;text-align:center;font-family:sans-serif}
-img{width:80%;max-width:600px;border-radius:15px;margin:15px}
-canvas{max-width:700px;margin:auto}
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;500;700&display=swap');
+
+body{
+    margin:0;
+    font-family:'Poppins',sans-serif;
+    background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+    color:#fff;
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center
+}
+
+.container{
+    background:rgba(255,255,255,0.1);
+    backdrop-filter:blur(12px);
+    border-radius:20px;
+    padding:35px;
+    box-shadow:0 10px 40px rgba(0,0,0,0.5);
+    text-align:center;
+    width:90%;
+    max-width:900px
+}
+
+h1{
+    font-size:2.4em;
+    background:linear-gradient(90deg,#00dbde,#fc00ff);
+    -webkit-background-clip:text;
+    -webkit-text-fill-color:transparent;
+}
+
+img{
+    width:80%;
+    max-width:600px;
+    margin:20px;
+    border-radius:15px;
+    border:4px solid #00ffea;
+}
+
+canvas{
+    width:100%;
+    max-width:700px;
+    height:350px;
+    margin:20px auto;
+}
+
+.readings{
+    font-size:1.3em;
+    margin-top:20px;
+}
+
+.value{
+    font-weight:700;
+    color:#00ffea;
+}
+
+.footer{
+    margin-top:20px;
+    font-size:0.9em;
+    color:#88cccc;
+}
 </style>
 </head>
+
 <body>
+<div class="container">
 
 <h1>🐟 Fish Monitor System</h1>
 
-<h2>Live Stream</h2>
-<img src="/stream">
+<h2>Live Webcam Stream</h2>
+<img src="/video" alt="Webcam Stream">
 
-<h2>Water Level (cm)</h2>
+<h2>HC-SR04 Distance Chart (cm)</h2>
 <canvas id="chart"></canvas>
 
 <script>
 const ctx = document.getElementById('chart').getContext('2d');
-const chart = new Chart(ctx,{
- type:'line',
- data:{
-  labels:[],
-  datasets:[{
-   label:'Distance (cm)',
-   borderColor:'cyan',
-   backgroundColor:'rgba(0,255,255,0.2)',
-   data:[],
-   fill:true
-  }]
- },
- options:{responsive:true}
+
+const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [{
+            label: 'Water Level (cm)',
+            borderColor: 'rgb(0,255,234)',
+            backgroundColor: 'rgba(0,255,234,0.2)',
+            data: [],
+            fill: true,
+            tension: 0.3
+        }]
+    },
+    options: {
+        responsive: true,
+        scales: {
+            x: {
+                title: { display: true, text: 'Time' }
+            },
+            y: {
+                title: { display: true, text: 'Distance (cm)' }
+            }
+        }
+    }
 });
 
-function updateChart(val){
- if(chart.data.labels.length>20){
-  chart.data.labels.shift();
-  chart.data.datasets[0].data.shift();
- }
- chart.data.labels.push(new Date().toLocaleTimeString());
- chart.data.datasets[0].data.push(val);
- chart.update();
+function updateChart(value){
+    if(chart.data.labels.length > 20){
+        chart.data.labels.shift();
+        chart.data.datasets[0].data.shift();
+    }
+
+    chart.data.labels.push(new Date().toLocaleTimeString());
+    chart.data.datasets[0].data.push(value);
+    chart.update();
 }
 
 setInterval(()=>{
- fetch('/data')
- .then(r=>r.json())
- .then(d=>updateChart(d.value));
+    fetch('/data')
+    .then(response => response.json())
+    .then(data => updateChart(data.value))
+    .catch(err => console.error(err));
 },1000);
 </script>
 
+<div class="readings">
+<div>🌡️ Temperature: <span class="value">{temp:.2f} °C</span></div>
+<div>🗜️ Pressure: <span class="value">{pres_hpa:.2f} hPa</span></div>
+<div>🗻 Altitude: <span class="value">{alt:.1f} m</span></div>
+</div>
+
+<div class="footer">
+Sea-level: {sea_level_hpa} hPa <br>
+ESP32 Fish + Weather Monitor
+</div>
+
+</div>
 </body>
 </html>
 )rawliteral";
@@ -144,13 +236,15 @@ bool initCamera() {
   config.pixel_format = PIXFORMAT_JPEG;
 
   if(psramFound()){
-    config.frame_size = FRAMESIZE_VGA;
-    config.jpeg_quality = 12;
-    config.fb_count = 2;
+  config.frame_size = FRAMESIZE_VGA;
+  config.jpeg_quality = 12;
+  config.fb_count = 2;
+  config.fb_location = CAMERA_FB_IN_PSRAM;
   } else {
     config.frame_size = FRAMESIZE_QVGA;
     config.jpeg_quality = 15;
     config.fb_count = 1;
+    config.fb_location = CAMERA_FB_IN_DRAM;
   }
 
   config.grab_mode = CAMERA_GRAB_LATEST;
