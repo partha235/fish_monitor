@@ -1,17 +1,37 @@
-/* Includes ---------------------------------------------------------------- */
-#include <fishdetetions_inferencing.h>
-#include "edge-impulse-sdk/dsp/image/image.hpp"
-
+#include <Arduino.h>
+#include <WiFi.h>
 #include "esp_camera.h"
+#include <esp_http_server.h>
 
-// Select camera model - find more camera models in camera_pins.h file here
-// https://github.com/espressif/arduino-esp32/blob/master/libraries/ESP32/examples/Camera/CameraWebServer/camera_pins.h
-// === ESP32-S3 Common Camera Pinout (matches many S3-CAM / S3-EYE boards) ===
+// ================= WIFI CONFIG =================
+const char* ssid = "bps_cam";
+const char* password = "12345678";
+const int defaultFPS = 2;
+
+// ================= HC-SR04 =================
+#define TRIG_PIN 40     // CHANGE if needed
+#define ECHO_PIN 41     // CHANGE if needed
+
+float getDistanceCM() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  long duration = pulseIn(ECHO_PIN, HIGH, 30000);
+  float distance = duration * 0.034 / 2.0;
+
+  return distance;
+}
+
+// ================= CAMERA PINS (ESP32-S3) =================
 #define PWDN_GPIO_NUM    -1
 #define RESET_GPIO_NUM   -1
 #define XCLK_GPIO_NUM    15
-#define SIOD_GPIO_NUM     4   // SCCB SDA
-#define SIOC_GPIO_NUM     5   // SCCB SCL
+#define SIOD_GPIO_NUM     4
+#define SIOC_GPIO_NUM     5
 #define Y2_GPIO_NUM      11
 #define Y3_GPIO_NUM       9
 #define Y4_GPIO_NUM       8
@@ -23,303 +43,201 @@
 #define VSYNC_GPIO_NUM    6
 #define HREF_GPIO_NUM     7
 #define PCLK_GPIO_NUM    13
+#define LED_GPIO_NUM      2
 
-#define LED_GPIO_NUM      2   // Built-in LED on many S3-CAM boards
+// ================= STREAM DEFINITIONS =================
+#define PART_BOUNDARY "123456789000000000000987654321"
+static const char* STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
+static const char* STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
+static const char* STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
 
+httpd_handle_t server = NULL;
 
+// ================= HTML PAGE =================
+const char INDEX_HTML[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fish Monitor</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body{background:#0f2027;color:white;text-align:center;font-family:sans-serif}
+img{width:80%;max-width:600px;border-radius:15px;margin:15px}
+canvas{max-width:700px;margin:auto}
+</style>
+</head>
+<body>
 
+<h1>🐟 Fish Monitor System</h1>
 
-/* Private variables ------------------------------------------------------- */
-static bool debug_nn = false; // Set this to true to see e.g. features generated from the raw signal
-static bool is_initialised = false;
+<h2>Live Stream</h2>
+<img src="/stream">
+
+<h2>Water Level (cm)</h2>
+<canvas id="chart"></canvas>
+
+<script>
+const ctx = document.getElementById('chart').getContext('2d');
+const chart = new Chart(ctx,{
+ type:'line',
+ data:{
+  labels:[],
+  datasets:[{
+   label:'Distance (cm)',
+   borderColor:'cyan',
+   backgroundColor:'rgba(0,255,255,0.2)',
+   data:[],
+   fill:true
+  }]
+ },
+ options:{responsive:true}
+});
+
+function updateChart(val){
+ if(chart.data.labels.length>20){
+  chart.data.labels.shift();
+  chart.data.datasets[0].data.shift();
+ }
+ chart.data.labels.push(new Date().toLocaleTimeString());
+ chart.data.datasets[0].data.push(val);
+ chart.update();
+}
+
+setInterval(()=>{
+ fetch('/data')
+ .then(r=>r.json())
+ .then(d=>updateChart(d.value));
+},1000);
+</script>
+
+</body>
+</html>
+)rawliteral";
 
 // ================= CAMERA INIT =================
 bool initCamera() {
-    camera_config_t config;
-    config.ledc_channel = LEDC_CHANNEL_0;
-    config.ledc_timer = LEDC_TIMER_0;
-    config.pin_d0 = Y2_GPIO_NUM;
-    config.pin_d1 = Y3_GPIO_NUM;
-    config.pin_d2 = Y4_GPIO_NUM;
-    config.pin_d3 = Y5_GPIO_NUM;
-    config.pin_d4 = Y6_GPIO_NUM;
-    config.pin_d5 = Y7_GPIO_NUM;
-    config.pin_d6 = Y8_GPIO_NUM;
-    config.pin_d7 = Y9_GPIO_NUM;
-    config.pin_xclk = XCLK_GPIO_NUM;
-    config.pin_pclk = PCLK_GPIO_NUM;
-    config.pin_vsync = VSYNC_GPIO_NUM;
-    config.pin_href = HREF_GPIO_NUM;
-    config.pin_sccb_sda = SIOD_GPIO_NUM;
-    config.pin_sccb_scl = SIOC_GPIO_NUM;
-    config.pin_pwdn = PWDN_GPIO_NUM;
-    config.pin_reset = RESET_GPIO_NUM;
-    config.xclk_freq_hz = 20000000;
-    config.pixel_format = PIXFORMAT_RGB565;  // Required for streaming
-    config.jpeg_quality = 12;              // Start reasonable
-    config.fb_count = 2;
-    config.grab_mode = CAMERA_GRAB_LATEST; // Better for streaming
-    config.fb_location = CAMERA_FB_IN_PSRAM; // Prefer PSRAM if available
-  
-    // Try higher res if PSRAM available
-    if (psramFound()) {
-        Serial.println("PSRAM FOUND - enabling higher quality");
-        config.frame_size = FRAMESIZE_QVGA;  // 320x240  
-        // config.frame_size = FRAMESIZE_UXGA; // 1600x1200 — try this if stable
-        config.jpeg_quality = 10;
-        config.fb_count = 2;                 // Double buffering reduces lag
-    } else {
-        Serial.println("No PSRAM - limiting resolution");
-        config.frame_size = FRAMESIZE_VGA;   // 640x480 fallback
-        config.fb_location = CAMERA_FB_IN_DRAM;
-    }
-  
-    esp_err_t err = esp_camera_init(&config);
-            if (err != ESP_OK) {
-                Serial.printf("Camera init failed with error 0x%x\n", err);
-                return false;
-            }
 
-            is_initialised = true;   // ✅ ADD THIS
-            return true;
-  
+  camera_config_t config;
+  config.ledc_channel = LEDC_CHANNEL_0;
+  config.ledc_timer = LEDC_TIMER_0;
+
+  config.pin_d0 = Y2_GPIO_NUM;
+  config.pin_d1 = Y3_GPIO_NUM;
+  config.pin_d2 = Y4_GPIO_NUM;
+  config.pin_d3 = Y5_GPIO_NUM;
+  config.pin_d4 = Y6_GPIO_NUM;
+  config.pin_d5 = Y7_GPIO_NUM;
+  config.pin_d6 = Y8_GPIO_NUM;
+  config.pin_d7 = Y9_GPIO_NUM;
+
+  config.pin_xclk = XCLK_GPIO_NUM;
+  config.pin_pclk = PCLK_GPIO_NUM;
+  config.pin_vsync = VSYNC_GPIO_NUM;
+  config.pin_href = HREF_GPIO_NUM;
+  config.pin_sccb_sda = SIOD_GPIO_NUM;
+  config.pin_sccb_scl = SIOC_GPIO_NUM;
+  config.pin_pwdn = PWDN_GPIO_NUM;
+  config.pin_reset = RESET_GPIO_NUM;
+
+  config.xclk_freq_hz = 20000000;
+  config.pixel_format = PIXFORMAT_JPEG;
+
+  if(psramFound()){
+    config.frame_size = FRAMESIZE_VGA;
+    config.jpeg_quality = 12;
+    config.fb_count = 2;
+  } else {
+    config.frame_size = FRAMESIZE_QVGA;
+    config.jpeg_quality = 15;
+    config.fb_count = 1;
   }
 
-/* Constant defines -------------------------------------------------------- */
-#define EI_CAMERA_RAW_FRAME_BUFFER_COLS 320
-#define EI_CAMERA_RAW_FRAME_BUFFER_ROWS 240
-#define EI_CAMERA_FRAME_BYTE_SIZE 3
+  config.grab_mode = CAMERA_GRAB_LATEST;
 
-uint8_t *snapshot_buf;
-
-/**
-* @brief      Arduino setup function
-*/
-void setup()
-{
-    Serial.begin(115200);
-    delay(1000);
-
-    if (!initCamera()) {
-        Serial.println("camera not initiated");
-        while (true) {
-          digitalWrite(LED_GPIO_NUM, HIGH);
-          delay(200);
-          digitalWrite(LED_GPIO_NUM, LOW);
-          delay(200);
-        }
-      }
-      else{
-          Serial.println("camera initiated");
-      }
-      delay(500);
-
-      snapshot_buf = (uint8_t*)ps_malloc(
-        EI_CAMERA_RAW_FRAME_BUFFER_COLS *
-        EI_CAMERA_RAW_FRAME_BUFFER_ROWS *
-        EI_CAMERA_FRAME_BYTE_SIZE
-    );
-    
-    if (!snapshot_buf) {
-        Serial.println("PSRAM allocation failed!");
-        while(true);
-    }
-
-    //comment out the below line to start inference immediately after upload
-    Serial.println("Edge Impulse Inferencing Demo");
-
-    ei_printf("\nStarting continious inference in 2 seconds...\n");
-    ei_sleep(2000);
+  return esp_camera_init(&config) == ESP_OK;
 }
 
-/**
-* @brief      Get data and run inferencing
-*
-* @param[in]  debug  Get debug info if true
-*/
-void loop()
-{
-
-    // instead of wait_ms, we'll wait on the signal, this allows threads to cancel us...
-    if (ei_sleep(5) != EI_IMPULSE_OK) {
-        return;
-    }
-
-    ei::signal_t signal;
-    signal.total_length = EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT;
-    signal.get_data = &ei_camera_get_data;
-
-    if (ei_camera_capture(
-        EI_CLASSIFIER_INPUT_WIDTH,
-        EI_CLASSIFIER_INPUT_HEIGHT,
-        snapshot_buf) == false) {
-    ei_printf("Failed to capture image\r\n");
-    return;
-    }
-
-    // Run the classifier
-    ei_impulse_result_t result = { 0 };
-
-    EI_IMPULSE_ERROR err = run_classifier(&signal, &result, debug_nn);
-    if (err != EI_IMPULSE_OK) {
-        ei_printf("ERR: Failed to run classifier (%d)\n", err);
-        return;
-    }
-
-    // print the predictions
-    ei_printf("Predictions (DSP: %d ms., Classification: %d ms., Anomaly: %d ms.): \n",
-                result.timing.dsp, result.timing.classification, result.timing.anomaly);
-
-#if EI_CLASSIFIER_OBJECT_DETECTION == 1
-    ei_printf("Object detection bounding boxes:\r\n");
-    for (uint32_t i = 0; i < result.bounding_boxes_count; i++) {
-        ei_impulse_result_bounding_box_t bb = result.bounding_boxes[i];
-        if (bb.value == 0) {
-            continue;
-        }
-        ei_printf("  %s (%f) [ x: %u, y: %u, width: %u, height: %u ]\r\n",
-                bb.label,
-                bb.value,
-                bb.x,
-                bb.y,
-                bb.width,
-                bb.height);
-    }
-
-    // Print the prediction results (classification)
-#else
-    ei_printf("Predictions:\r\n");
-    for (uint16_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
-        ei_printf("  %s: ", ei_classifier_inferencing_categories[i]);
-        ei_printf("%.5f\r\n", result.classification[i].value);
-    }
-#endif
-
-    // Print anomaly result (if it exists)
-#if EI_CLASSIFIER_HAS_ANOMALY
-    ei_printf("Anomaly prediction: %.3f\r\n", result.anomaly);
-#endif
-
-#if EI_CLASSIFIER_HAS_VISUAL_ANOMALY
-    ei_printf("Visual anomalies:\r\n");
-    for (uint32_t i = 0; i < result.visual_ad_count; i++) {
-        ei_impulse_result_bounding_box_t bb = result.visual_ad_grid_cells[i];
-        if (bb.value == 0) {
-            continue;
-        }
-        ei_printf("  %s (%f) [ x: %u, y: %u, width: %u, height: %u ]\r\n",
-                bb.label,
-                bb.value,
-                bb.x,
-                bb.y,
-                bb.width,
-                bb.height);
-    }
-#endif
-
-
-
+// ================= HTTP HANDLERS =================
+static esp_err_t index_handler(httpd_req_t *req){
+  httpd_resp_set_type(req,"text/html");
+  httpd_resp_send(req, INDEX_HTML, strlen(INDEX_HTML));
+  return ESP_OK;
 }
 
-/**
- * @brief   Setup image sensor & start streaming
- *
- * @retval  false if initialisation failed
- */
-
-/**
- * @brief      Stop streaming of sensor data
- */
-void ei_camera_deinit(void) {
-
-    //deinitialize the camera
-    esp_err_t err = esp_camera_deinit();
-
-    if (err != ESP_OK)
-    {
-        ei_printf("Camera deinit failed\n");
-        return;
-    }
-
-    is_initialised = false;
-    return;
+static esp_err_t data_handler(httpd_req_t *req){
+  float distance = getDistanceCM();
+  char json[64];
+  snprintf(json,sizeof(json),"{\"value\":%.2f}",distance);
+  httpd_resp_set_type(req,"application/json");
+  httpd_resp_send(req,json,strlen(json));
+  return ESP_OK;
 }
 
+static esp_err_t stream_handler(httpd_req_t *req){
 
-/**
- * @brief      Capture, rescale and crop image
- *
- * @param[in]  img_width     width of output image
- * @param[in]  img_height    height of output image
- * @param[in]  out_buf       pointer to store output image, NULL may be used
- *                           if ei_camera_frame_buffer is to be used for capture and resize/cropping.
- *
- * @retval     false if not initialised, image captured, rescaled or cropped failed
- *
- */
- 
- 
-bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf)
- {
-     if (!is_initialised) {
-         ei_printf("ERR: Camera not initialized\r\n");
-         return false;
-     }
- 
-     camera_fb_t *fb = esp_camera_fb_get();
-     if (!fb) {
-         ei_printf("Camera capture failed\n");
-         return false;
-     }
- 
-     // Convert RGB565 → RGB888 directly into snapshot_buf
-     for (size_t i = 0, j = 0; i < fb->len; i += 2, j += 3) {
-         uint16_t pixel = (fb->buf[i] << 8) | fb->buf[i + 1];
- 
-         snapshot_buf[j]     = ((pixel >> 11) & 0x1F) << 3;  // R
-         snapshot_buf[j + 1] = ((pixel >> 5) & 0x3F) << 2;   // G
-         snapshot_buf[j + 2] = (pixel & 0x1F) << 3;          // B
-     }
- 
-     esp_camera_fb_return(fb);
- 
-     // Resize properly
-     if (img_width != EI_CAMERA_RAW_FRAME_BUFFER_COLS ||
-         img_height != EI_CAMERA_RAW_FRAME_BUFFER_ROWS) {
- 
-         ei::image::processing::crop_and_interpolate_rgb888(
-             snapshot_buf,
-             EI_CAMERA_RAW_FRAME_BUFFER_COLS,
-             EI_CAMERA_RAW_FRAME_BUFFER_ROWS,
-             out_buf,
-             img_width,
-             img_height
-         );
-     }
- 
-     return true;
- }
+  httpd_resp_set_type(req, STREAM_CONTENT_TYPE);
 
+  camera_fb_t *fb = NULL;
+  char part_buf[64];
 
-static int ei_camera_get_data(size_t offset, size_t length, float *out_ptr)
-{
-    size_t pixel_ix = offset * 3;
+  while(true){
 
-    for (size_t i = 0; i < length; i++) {
+    fb = esp_camera_fb_get();
+    if(!fb) break;
 
-        uint8_t r = snapshot_buf[pixel_ix];
-        uint8_t g = snapshot_buf[pixel_ix + 1];
-        uint8_t b = snapshot_buf[pixel_ix + 2];
+    size_t hlen = snprintf(part_buf,64,STREAM_PART,fb->len);
+    httpd_resp_send_chunk(req,part_buf,hlen);
+    httpd_resp_send_chunk(req,(const char*)fb->buf,fb->len);
+    httpd_resp_send_chunk(req,STREAM_BOUNDARY,strlen(STREAM_BOUNDARY));
 
-        out_ptr[i] = (r << 16) | (g << 8) | b;
+    esp_camera_fb_return(fb);
 
-        pixel_ix += 3;
-    }
+    delay(1000/defaultFPS);
+  }
 
-    return 0;
+  return ESP_OK;
 }
 
+// ================= SERVER START =================
+void startServer(){
 
-#if !defined(EI_CLASSIFIER_SENSOR) || EI_CLASSIFIER_SENSOR != EI_CLASSIFIER_SENSOR_CAMERA
-#error "Invalid model for current sensor"
-#endif
+  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+
+  httpd_uri_t index_uri = { "/", HTTP_GET, index_handler, NULL };
+  httpd_uri_t stream_uri = { "/stream", HTTP_GET, stream_handler, NULL };
+  httpd_uri_t data_uri = { "/data", HTTP_GET, data_handler, NULL };
+
+  if(httpd_start(&server,&config)==ESP_OK){
+    httpd_register_uri_handler(server,&index_uri);
+    httpd_register_uri_handler(server,&stream_uri);
+    httpd_register_uri_handler(server,&data_uri);
+  }
+}
+
+// ================= SETUP =================
+void setup(){
+
+  Serial.begin(115200);
+
+  pinMode(LED_GPIO_NUM, OUTPUT);
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+
+  if(!initCamera()){
+    Serial.println("Camera Failed!");
+    while(true);
+  }
+
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(ssid,password);
+  Serial.println("AP Started");
+  Serial.println(WiFi.softAPIP());
+
+  startServer();
+}
+
+// ================= LOOP =================
+void loop(){
+  delay(10000);
+}
