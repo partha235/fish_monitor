@@ -302,8 +302,6 @@ static esp_err_t capture_handler(httpd_req_t *req){
     }
   
     httpd_resp_set_type(req, "image/jpeg");
-    httpd_resp_set_hdr(req, "Content-Disposition", "inline; filename=capture.jpg");
-  
     httpd_resp_send(req, (const char*)fb->buf, fb->len);
   
     esp_camera_fb_return(fb);
@@ -320,7 +318,7 @@ void startServer(){
   httpd_uri_t stream_uri  = { "/stream",  HTTP_GET, stream_handler,  NULL };
   httpd_uri_t data_uri    = { "/data",    HTTP_GET, data_handler,    NULL };
   httpd_uri_t capture_uri = { "/capture", HTTP_GET, capture_handler, NULL };
-
+ 
   if(httpd_start(&server,&config)==ESP_OK){
     httpd_register_uri_handler(server,&index_uri);
     httpd_register_uri_handler(server,&stream_uri);
