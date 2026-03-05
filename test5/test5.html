@@ -133,7 +133,11 @@ setInterval(()=>{
 </script>
 
 <div class="readings">
-<div>🌡️ Temperature: <span class="value">{temp:.2f} °C</span></div>
+
+    <!-- from temperature probe sensor -->
+<div>🌡️ Water Temperature: <span class="value">{temp:.2f} °C</span></div>
+<!-- from DHT11 -->
+<div>🌡️ Surface Temperature: <span class="value">{temp:.2f} °C</span></div>
 <div>🗜️ Pressure: <span class="value">{pres_hpa:.2f} hPa</span></div>
 <div>🗻 Altitude: <span class="value">{alt:.1f} m</span></div>
 </div>

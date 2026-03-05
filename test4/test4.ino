@@ -14,6 +14,7 @@ const int defaultFPS = 2;
 // Logging tag
 static const char *TAG = "CAMERA";
 
+
 volatile uint32_t captureCount = 0;
 
 // === ESP32-S3 Common Camera Pinout (matches many S3-CAM / S3-EYE boards) ===

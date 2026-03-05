@@ -5,16 +5,20 @@
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
 
+volatile uint32_t captureCount = 0;
+
+volatile float currentDistance = 0;
 // ================= WIFI CONFIG =================
 const char* ssid = "bps_wifi";
 const char* password = "sagabps@235";
 const int defaultFPS = 2;
 
 // ================= HC-SR04 =================
-#define TRIG_PIN 40     // CHANGE if needed
+#define TRIG_PIN 42     // CHANGE if needed
 #define ECHO_PIN 41     // CHANGE if needed
 
 float getDistanceCM() {
+
   digitalWrite(TRIG_PIN, LOW);
   delayMicroseconds(2);
 
@@ -22,10 +26,20 @@ float getDistanceCM() {
   delayMicroseconds(10);
   digitalWrite(TRIG_PIN, LOW);
 
-  long duration = pulseIn(ECHO_PIN, HIGH, 30000);
-  float distance = duration * 0.034 / 2.0;
+  unsigned long start = micros();
+  while (digitalRead(ECHO_PIN) == LOW) {
+    if (micros() - start > 30000) return -1;
+  }
 
-  return distance;
+  unsigned long echoStart = micros();
+
+  while (digitalRead(ECHO_PIN) == HIGH) {
+    if (micros() - echoStart > 30000) return -1;
+  }
+
+  unsigned long duration = micros() - echoStart;
+
+  return duration * 0.0343 / 2.0;
 }
 
 // ================= CAMERA PINS (ESP32-S3) =================
@@ -233,7 +247,7 @@ bool initCamera() {
   config.pin_reset = RESET_GPIO_NUM;
 
   config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_JPEG;
+  config.pixel_format = PIXFORMAT_JPEG;;
 
   if(psramFound()){
   config.frame_size = FRAMESIZE_VGA;
@@ -259,54 +273,72 @@ static esp_err_t index_handler(httpd_req_t *req){
   return ESP_OK;
 }
 
-static esp_err_t data_handler(httpd_req_t *req){
+static esp_err_t data_handler(httpd_req_t *req) {
+
   float distance = getDistanceCM();
-  char json[64];
-  snprintf(json,sizeof(json),"{\"value\":%.2f}",distance);
-  httpd_resp_set_type(req,"application/json");
-  httpd_resp_send(req,json,strlen(json));
+
+  char json[128];
+  snprintf(json, sizeof(json),
+           "{\"value\": %.2f}",
+           distance);
+
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_send(req, json, strlen(json));
+
   return ESP_OK;
 }
 
-static esp_err_t stream_handler(httpd_req_t *req){
+static esp_err_t stream_handler(httpd_req_t *req) {
 
   httpd_resp_set_type(req, STREAM_CONTENT_TYPE);
 
   camera_fb_t *fb = NULL;
   char part_buf[64];
 
-  while(true){
+  while (true) {
 
     fb = esp_camera_fb_get();
-    if(!fb) break;
+    if (!fb) {
+      Serial.println("Stream capture FAILED");
+      break;
+    }
 
-    size_t hlen = snprintf(part_buf,64,STREAM_PART,fb->len);
-    httpd_resp_send_chunk(req,part_buf,hlen);
-    httpd_resp_send_chunk(req,(const char*)fb->buf,fb->len);
-    httpd_resp_send_chunk(req,STREAM_BOUNDARY,strlen(STREAM_BOUNDARY));
+    captureCount++;
+    Serial.printf("🎥 Stream Frame #%lu | Size: %u bytes\n", captureCount, fb->len);
+    // size_t hlen = snprintf(part_buf, 64, STREAM_PART, fb->len);
+    size_t hlen = snprintf(part_buf, 64, STREAM_PART, fb->len);
+
+    if (httpd_resp_send_chunk(req, part_buf, hlen) != ESP_OK) break;
+    if (httpd_resp_send_chunk(req, (const char*)fb->buf, fb->len) != ESP_OK) break;
+    if (httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY)) != ESP_OK) break;
 
     esp_camera_fb_return(fb);
 
-    delay(1000/defaultFPS);
+    delay(1000 / defaultFPS);
   }
-
+  Serial.println("Stream ended");
   return ESP_OK;
 }
 
-static esp_err_t capture_handler(httpd_req_t *req){
 
-    camera_fb_t *fb = esp_camera_fb_get();
-    if(!fb){
-      httpd_resp_send_500(req);
-      return ESP_FAIL;
-    }
-  
-    httpd_resp_set_type(req, "image/jpeg");
-    httpd_resp_send(req, (const char*)fb->buf, fb->len);
-  
-    esp_camera_fb_return(fb);
-    return ESP_OK;
+static esp_err_t capture_handler(httpd_req_t *req) {
+
+  camera_fb_t *fb = esp_camera_fb_get();
+  if (!fb) {
+    Serial.println("Capture FAILED");
+    return ESP_FAIL;
   }
+
+  captureCount++;
+  Serial.printf("📸 Capture #%lu | Size: %u bytes\n", captureCount, fb->len);
+
+  httpd_resp_set_type(req, "image/jpeg");
+  httpd_resp_send(req, (const char *)fb->buf, fb->len);
+
+  esp_camera_fb_return(fb);
+
+  return ESP_OK;
+}
 
 
 // ================= SERVER START =================
@@ -357,5 +389,7 @@ void setup(){
 
 // ================= LOOP =================
 void loop(){
+    
+  currentDistance = getDistanceCM();
   delay(10000);
 }

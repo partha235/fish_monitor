@@ -1,8 +1,8 @@
-from machine import I2C, Pin
+from machine import SoftI2C, Pin
 from bmp180 import BMP180
 from time import sleep
 
-i2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=100000)
+i2c = SoftI2C(scl=Pin(14), sda=Pin(21), freq=100000)
 
 print("I2C devices:", i2c.scan())
 
