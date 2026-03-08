@@ -111,6 +111,7 @@ canvas{width:100%;max-width:700px;height:350px;margin:20px auto}
     <div>🌡️ Water Temp (probe): <span class="value" id="waterTemp">---</span> °C</div>
     <div>🌡️ Surface Temp (DHT11): <span class="value" id="surfaceTemp">---</span> °C</div>
     <div>🗜️ Pressure: <span class="value" id="pressure">---</span> hPa</div>
+    <div>🗻 Altitude: <span class="value" id="altitude">---</span> m</div>
     <div>📏 Distance: <span class="value" id="dist">---</span> cm</div>
 </div>
 <div class="footer">ESP32-S3 Camera + Sensors</div>
@@ -145,6 +146,7 @@ setInterval(() => {
         document.getElementById('waterTemp').textContent   = d.waterTemp   >= -50 ? d.waterTemp.toFixed(1)   : 'Error';
         document.getElementById('surfaceTemp').textContent = d.surfaceTemp >= -50 ? d.surfaceTemp.toFixed(1) : 'Error';
         document.getElementById('pressure').textContent    = d.pressure    >  0   ? d.pressure.toFixed(1)    : 'Error';
+        document.getElementById('altitude').textContent = d.altitude > -500 ? d.altitude.toFixed(1) : 'Error';
         document.getElementById('dist').textContent        = d.distance    >= 0   ? d.distance.toFixed(1)    : 'Error';
         if (d.distance >= 0) updateChart(d.distance);
     })
@@ -335,7 +337,7 @@ void loop() {
     // BMP
     if (bmp_ok) {
         pressure_hPa = bmp.readPressure() / 100.0f;
-        altitude_m = bmp.readAltitude(1011.8);   // adjust sea-level hPa if known
+        altitude_m = 44330 * (1 - pow(pressure_hPa / 1013.25, 0.1903));  // adjust sea-level hPa if known
     }
 
     // Debug print every cycle
