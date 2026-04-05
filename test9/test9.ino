@@ -22,8 +22,8 @@ String waterQuality = "Unknown";
 bool bmp_ok = false;
 
 // ================= WIFI =================
-const char* ssid = "bps_wifi";
-const char* password = "sagabps@235";
+const char* ssid = "esp32_fish";
+const char* password = "12345678";
 
 // ================= PINS =================
 #define TRIG_PIN      42
@@ -222,6 +222,7 @@ bool initCamera() {
 static esp_err_t index_handler(httpd_req_t *req) {
     httpd_resp_set_type(req, "text/html");
     httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+    httpd_resp_set_hdr(req, "Connection", "close");
     return httpd_resp_send(req, INDEX_HTML, HTTPD_RESP_USE_STRLEN);
 }
 
@@ -244,12 +245,13 @@ static esp_err_t capture_handler(httpd_req_t *req) {
     captureCount++;
     Serial.printf("Capture #%lu size: %u bytes\n", captureCount, fb->len);
 
-    httpd_resp_set_type(req, "image/jpeg");
-    httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
-    esp_err_t res = httpd_resp_send(req, (const char*)fb->buf, fb->len);
-    esp_camera_fb_return(fb);
-    httpd_resp_set_hdr(req, "Connection", "close");
-    return res;
+   httpd_resp_set_type(req, "image/jpeg");
+   httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+   httpd_resp_set_hdr(req, "Connection", "close");   // ✅ MOVE HERE
+   
+   esp_err_t res = httpd_resp_send(req, (const char*)fb->buf, fb->len);
+   esp_camera_fb_return(fb);
+   return res;
 }
 
 // ================= SERVER =================
@@ -258,6 +260,8 @@ httpd_handle_t server = NULL;
 void startServer() {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.max_uri_handlers = 8;
+    config.max_open_sockets = 6;
+    config.lru_purge_enable = true;
 
     httpd_uri_t uris[] = {
         {"/", HTTP_GET, index_handler, NULL},
@@ -313,13 +317,23 @@ void setup() {
         while (true) delay(1000);
     }
 
-    WiFi.begin(ssid, password);
-    Serial.print("WiFi ");
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(400);
-        Serial.print(".");
-    }
-    Serial.println("\nConnected → http://" + WiFi.localIP().toString());
+    // =========WiFi section=============
+    Serial.print("Setting AP (Access Point)…");
+    WiFi.mode(WIFI_AP);
+    bool result = WiFi.softAP(ssid, password);
+
+    if (result) { 
+        Serial.println("Access Point Started");
+         Serial.print("SSID: "); 
+         Serial.println(ssid); 
+         Serial.print("IP Address: "); 
+         Serial.println(WiFi.softAPIP()); // usually 192.168.4.1 
+         } 
+    else { 
+        Serial.println("AP Start Failed!");
+     }
+
+    
 
     startServer();
 }

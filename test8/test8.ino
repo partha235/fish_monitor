@@ -70,7 +70,7 @@ float getDistanceCM(){
 #define Y4_GPIO_NUM 8
 #define Y5_GPIO_NUM 10
 #define Y6_GPIO_NUM 12
-#define Y7_GPIO_NUM 18   // Note: GPIO18 used for turbidity — changed from camera if conflict
+#define Y7_GPIO_NUM 18  
 #define Y8_GPIO_NUM 17
 #define Y9_GPIO_NUM 16
 #define VSYNC_GPIO_NUM 6
@@ -132,33 +132,34 @@ function updateChart(value) {
     chart.update();
     document.getElementById('dist').textContent = value.toFixed(1);
 }
+// CAMERA (slower)
 setInterval(() => {
-    document.getElementById('liveCam').src = '/capture?t=' + new Date().getTime();
-    fetch('/sensors')
+    document.getElementById('liveCam').src = '/capture?t=' + Date.now();
+}, 5000);
+
+// SENSOR (separate)
+setInterval(() => {
+    fetch('/sensors?' + Date.now(), {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(2000)
+    })
     .then(r => r.json())
     .then(d => {
-        document.getElementById('waterTemp').textContent   = d.waterTemp >= -50 ? d.waterTemp.toFixed(1) : 'Error';
-        document.getElementById('surfaceTemp').textContent = d.surfaceTemp >= -50 ? d.surfaceTemp.toFixed(1) : 'Error';
-        document.getElementById('pressure').textContent    = d.pressure > 0 ? d.pressure.toFixed(1) : 'Error';
-        document.getElementById('altitude').textContent    = d.altitude > -500 ? d.altitude.toFixed(1) : 'Error';
-        document.getElementById('dist').textContent        = d.distance >= 0 ? d.distance.toFixed(1) : 'Error';
-        document.getElementById('turbidity').textContent   = d.turbidity;
+        document.getElementById('waterTemp').textContent = d.waterTemp.toFixed(1);
+        document.getElementById('surfaceTemp').textContent = d.surfaceTemp.toFixed(1);
+        document.getElementById('pressure').textContent = d.pressure.toFixed(1);
+        document.getElementById('altitude').textContent = d.altitude.toFixed(1);
+        document.getElementById('dist').textContent = d.distance.toFixed(1);
+        document.getElementById('turbidity').textContent = d.turbidity;
 
-        const qualEl = document.getElementById('quality');
-        if (d.quality === "Good") {
-            qualEl.textContent = "(Good)";
-            qualEl.className = "good";
-        } else if (d.quality === "Bad") {
-            qualEl.textContent = "(Bad)";
-            qualEl.className = "bad";
-        } else {
-            qualEl.textContent = "(Unknown)";
-        }
+        const q = document.getElementById('quality');
+        q.textContent = "(" + d.quality + ")";
+        q.className = d.quality === "Good" ? "good" : "bad";
 
         if (d.distance >= 0) updateChart(d.distance);
     })
-    .catch(e => console.error('Fetch failed:', e));
-}, 2000);
+    .catch(() => {});
+}, 3000);
 </script>
 </body>
 </html>
@@ -232,6 +233,7 @@ static esp_err_t sensors_handler(httpd_req_t *req) {
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+    httpd_resp_set_hdr(req, "Connection", "close");
     return httpd_resp_send(req, json, HTTPD_RESP_USE_STRLEN);
 }
 
@@ -246,6 +248,7 @@ static esp_err_t capture_handler(httpd_req_t *req) {
     httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
     esp_err_t res = httpd_resp_send(req, (const char*)fb->buf, fb->len);
     esp_camera_fb_return(fb);
+    httpd_resp_set_hdr(req, "Connection", "close");
     return res;
 }
 
